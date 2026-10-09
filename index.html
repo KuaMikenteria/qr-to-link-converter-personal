@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="description" content="Free online QR code reader. Upload, paste or scan any QR code image and instantly convert it to a link, text, Wi-Fi, vCard and more. 100% private, runs in your browser.">
+<title>QR Code to Link Converter · Professional QR Decoder</title>
+
+<!-- Tailwind CSS (Play CDN v3) -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        fontFamily: { sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'] }
+      }
+    }
+  };
+</script>
+
+<!-- Icons -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<!-- Font -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<!-- QR decoding engine -->
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+
+<!-- Set theme before first paint (prevents flash) -->
+<script>
+  (function () {
+    try {
+      var saved = localStorage.getItem('qr-theme');
+      var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      if (saved === 'dark' || (!saved && prefersDark)) document.documentElement.classList.add('dark');
+    } catch (e) {}
+  })();
+</script>
+
+<style>
+  :root { color-scheme: light; }
+  html.dark { color-scheme: dark; }
+
+  html, body { -webkit-tap-highlight-color: transparent; }
+  body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; }
+
+  .hidden { display: none !important; }
+
+  /* ---------- Drop zone ---------- */
+  .drop-zone {
+    border: 2px dashed #cbd5e1;
+    transition: border-color .2s ease, background-color .2s ease, transform .2s ease;
+  }
+  html.dark .drop-zone { border-color: #334155; }
+  .drop-zone:hover { border-color: #93c5fd; }
+  html.dark .drop-zone:hover { border-color: #1d4ed8; }
+  .drop-zone.active {
+    border-color: #3b82f6;
+    background-color: rgba(59, 130, 246, .07);
+    transform: scale(1.005);
+  }
+
+  /* ---------- Message banners ---------- */
+  .msg {
+    display: flex;
+    align-items: flex-start;
+    gap: .625rem;
+    padding: .8rem 1rem;
+    border-radius: .9rem;
+    font-size: .85rem;
+    line-height: 1.35;
+    border: 1px solid transparent;
+  }
+  .msg-info    { background: #eff6ff; color: #1e40af; border-color: #bfdbfe; }
+  .msg-success { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; }
+  .msg-error   { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+  html.dark .msg-info    { background: rgba(59,130,246,.12);  color: #bfdbfe; border-color: rgba(59,130,246,.32); }
+  html.dark .msg-success { background: rgba(16,185,129,.12);  color: #a7f3d0; border-color: rgba(16,185,129,.32); }
+  html.dark .msg-error   { background: rgba(239,68,68,.12);   color: #fecaca; border-color: rgba(239,68,68,.32); }
+
+  /* ---------- Type badges ---------- */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .28rem .7rem;
+    border-radius: 9999px;
+    font-size: .72rem;
+    font-weight: 600;
+    letter-spacing: .01em;
+    white-space: nowrap;
+  }
+  .badge-blue   { background:#dbeafe; color:#1e40af; }
+  .badge-green  { background:#d1fae5; color:#065f46; }
+  .badge-purple { background:#ede9fe; color:#5b21b6; }
+  .badge-amber  { background:#fef3c7; color:#92400e; }
+  .badge-rose   { background:#ffe4e6; color:#9f1239; }
+  .badge-slate  { background:#e2e8f0; color:#334155; }
+  html.dark .badge-blue   { background: rgba(59,130,246,.16);  color:#93c5fd; }
+  html.dark .badge-green  { background: rgba(16,185,129,.16);  color:#6ee7b7; }
+  html.dark .badge-purple { background: rgba(139,92,246,.16);  color:#c4b5fd; }
+  html.dark .badge-amber  { background: rgba(245,158,11,.16);  color:#fcd34d; }
+  html.dark .badge-rose   { background: rgba(244,63,94,.16);   color:#fda4af; }
+  html.dark .badge-slate  { background: rgba(148,163,184,.16); color:#cbd5e1; }
+
+  /* ---------- Animations ---------- */
+  .fade-in { animation: fadeIn .35s cubic-bezier(.16,1,.3,1) both; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .pop-in { animation: popIn .25s cubic-bezier(.16,1,.3,1) both; }
+  @keyframes popIn {
+    from { opacity: 0; transform: scale(.96); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+
+  .spinner {
+    width: 2.5rem; height: 2.5rem;
+    border-radius: 9999px;
+    border: 3px solid rgba(59,130,246,.22);
+    border-top-color: #3b82f6;
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---------- Preview checkerboard (shows transparent PNGs nicely) ---------- */
+  .checker {
+    background-image:
+      linear-gradient(45deg, #e2e8f0 25%, transparent 25%),
+      linear-gradient(-45deg, #e2e8f0 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #e2e8f0 75%),
+      linear-gradient(-45deg, transparent 75%, #e2e8f0 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  }
+  html.dark .checker {
+    background-image:
+      linear-gradient(45deg, #1e293b 25%, transparent 25%),
+      linear-gradient(-45deg, #1e293b 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #1e293b 75%),
+      linear-gradient(-45deg, transparent 75%, #1e293b 75%);
+  }
+
+  /* ---------- Scrollbars ---------- */
+  .nice-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+  .nice-scroll::-webkit-scrollbar-thumb { background: rgba(100,116,139,.35); border-radius: 9999px; }
+  .nice-scroll::-webkit-scrollbar-track { background: transparent; }
+
+  video { object-fit: cover; }
+</style>
+</head>
+
+<body class="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 antialiased transition-colors duration-300">
+
+<div class="min-h-screen flex flex-col">
+
+  <!-- ================= HEADER ================= -->
+  <header class="sticky top-0 z-40 border-b border-slate-200/80 dark:border-slate-800/80 bg-white/75 dark:bg-slate-950/75 backdrop-blur-xl">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+
+      <a href="#" class="flex items-center gap-2.5 select-none">
+        <span class="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 grid place-items-center shadow-lg shadow-blue-500/25">
+          <i class="fas fa-qrcode text-white text-sm"></i>
+        </span>
+        <span class="font-bold tracking-tight text-[15px] text-slate-900 dark:text-white">
+          QR<span class="text-blue-600 dark:text-blue-400">Decode</span>
+        </span>
+      </a>
+
+      <div class="flex items-center gap-2">
+        <button id="headerCameraBtn" type="button"
+          class="hidden sm:inline-flex items-center gap-2 h-10 px-3.5 rounded-xl text-sm font-medium
+                 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900
+                 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400
+                 hover:border-blue-300 dark:hover:border-blue-700 transition">
+          <i class="fas fa-camera"></i><span>Scan</span>
+        </button>
+
+        <button id="themeToggle" type="button" aria-label="Toggle dark mode"
+          class="w-10 h-10 grid place-items-center rounded-xl
+                 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900
+                 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400
+                 hover:border-blue-300 dark:hover:border-blue-700 transition">
+          <i id="themeIcon" class="fas fa-moon"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ================= MAIN ================= -->
+  <main class="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 pb-16">
+
+    <!-- Hero -->
+    <section class="text-center pt-10 sm:pt-14 pb-7">
+      <span class="badge badge-blue mb-4">
+        <i class="fas fa-shield-halved"></i> 100% private · runs offline in your browser
+      </span>
+      <h1 class="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+        QR Code
+        <span class="bg-gradient-to-r from-blue-600 via-indigo-500 to-violet-500 bg-clip-text text-transparent">to Link</span>
+      </h1>
+      <p class="mt-4 text-sm sm:text-base text-slate-500 dark:text-slate-400 max-w-xl mx-auto leading-relaxed">
+        Upload, paste, or scan any QR code image — from tiny pixelated codes to advanced high-density ones.
+        We extract the URL or content instantly, with multi-pass image enhancement.
+      </p>
+    </section>
+
+    <!-- ================= CARD ================= -->
+    <div class="relative rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xl shadow-slate-900/5 dark:shadow-black/30 p-4 sm:p-6 md:p-7">
+
+      <!-- Loading overlay -->
+      <div id="loadingOverlay" class="hidden absolute inset-0 z-20 items-center justify-center rounded-3xl bg-white/75 dark:bg-slate-900/75 backdrop-blur-sm">
+        <div class="flex flex-col items-center gap-3">
+          <div class="spinner"></div>
+          <p class="text-sm font-medium text-slate-600 dark:text-slate-300">Scanning QR code…</p>
+        </div>
+      </div>
+
+      <!-- Drop zone -->
+      <div id="dropZone" role="button" tabindex="0" aria-label="Upload a QR code image"
+        class="drop-zone rounded-2xl px-5 py-9 sm:py-12 text-center cursor-pointer bg-slate-50/60 dark:bg-slate-800/30">
+
+        <input type="file" id="fileInput" accept="image/*" class="hidden">
+
+        <div class="flex flex-col items-center gap-4 pointer-events-none">
+          <div class="w-16 h-16 rounded-2xl bg-white dark:bg-slate-800 shadow-sm border border-slate-100 dark:border-slate-700 grid place-items-center">
+            <i class="fas fa-cloud-arrow-up text-2xl text-blue-500"></i>
+          </div>
+          <div>
+            <p class="font-semibold text-slate-700 dark:text-slate-200">
+              <span class="text-blue-600 dark:text-blue-400">Click to upload</span> or drag &amp; drop
+            </p>
+            <p class="text-xs text-slate-400 dark:text-slate-500 mt-1.5">
+              PNG · JPG · WEBP · GIF · BMP &nbsp;•&nbsp; you can also paste with <kbd class="px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 text-[10px] font-sans">Ctrl</kbd>+<kbd class="px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 text-[10px] font-sans">V</kbd>
+            </p>
+          </div>
+
+          <div class="flex flex-wrap items-center justify-center gap-2.5 pointer-events-auto mt-1">
+            <button id="browseBtn" type="button"
+              class="inline-flex items-center gap-2 h-10 px-4 rounded-xl text-sm font-semibold text-white
+                     bg-blue-600 hover:bg-blue-700 active:scale-[.97] shadow-sm shadow-blue-600/25 transition">
+              <i class="fas fa-folder-open"></i> Choose image
+            </button>
+            <button id="cameraBtn" type="button"
+              class="inline-flex items-center gap-2 h-10 px-4 rounded-xl text-sm font-semibold
+                     border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800
+                     text-slate-700 dark:text-slate-200 hover:border-blue-300 dark:hover:border-blue-700
+                     hover:text-blue-600 dark:hover:text-blue-400 active:scale-[.97] transition">
+              <i class="fas fa-camera"></i> Use camera
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Status message -->
+      <div id="messageBox" class="msg mt-4 hidden">
+        <i id="messageIcon" class="fas fa-circle-info mt-0.5"></i>
+        <span id="messageText" class="flex-1"></span>
+      </div>
+
+      <!-- ============ RESULT ============ -->
+      <div id="resultSection" class="hidden mt-6 fade-in">
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-5">
+
+          <!-- Preview -->
+          <div class="lg:col-span-2 space-y-2.5">
+            <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              <i class="fas fa-image"></i><span>QR preview</span>
+            </div>
+            <div class="checker rounded-2xl border border-slate-200 dark:border-slate-800 p-3 grid place-items-center min-h-[190px]">
+              <img id="previewImage" alt="Uploaded QR code preview"
+                   class="max-w-full max-h-52 rounded-lg object-contain shadow-sm">
+            </div>
+          </div>
+
+          <!-- Decoded -->
+          <div class="lg:col-span-3 space-y-2.5 flex flex-col">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                <i class="fas fa-wand-magic-sparkles"></i><span>Decoded content</span>
+              </div>
+              <span id="typeBadge" class="badge badge-slate">
+                <i id="typeBadgeIcon" class="fas fa-align-left"></i>
+                <span id="typeBadgeText">Text</span>
+              </span>
+            </div>
+
+            <div class="flex-1 flex flex-col rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-4">
+              <div id="decodedContent"
+                class="nice-scroll flex-1 overflow-y-auto max-h-52 text-[13.5px] sm:text-sm leading-relaxed
+                       font-medium text-slate-800 dark:text-slate-100 whitespace-pre-wrap break-all"></div>
+
+              <p id="decodeMeta" class="mt-3 text-[11px] text-slate-400 dark:text-slate-500"></p>
+
+              <div class="mt-3.5 flex flex-wrap gap-2.5">
+                <button id="copyButton" type="button" disabled
+                  class="inline-flex items-center gap-2 h-10 px-4 rounded-xl text-sm font-semibold text-white
+                         bg-blue-600 hover:bg-blue-700 active:scale-[.97] shadow-sm shadow-blue-600/25
+                         transition disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100">
+                  <i class="fas fa-copy"></i><span>Copy</span>
+                </button>
+
+                <a id="openLinkButton" href="#" target="_blank" rel="noopener noreferrer"
+                  class="hidden items-center gap-2 h-10 px-4 rounded-xl text-sm font-semibold
+                         border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800
+                         text-slate-700 dark:text-slate-200 hover:border-blue-300 dark:hover:border-blue-700
+                         hover:text-blue-600 dark:hover:text-blue-400 active:scale-[.97] transition">
+                  <i class="fas fa-arrow-up-right-from-square"></i><span>Open link</span>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reset -->
+      <div class="mt-5 flex justify-end">
+        <button id="resetButton" type="button"
+          class="hidden items-center gap-2 text-sm font-medium text-slate-500 dark:text-slate-400
+                 hover:text-blue-600 dark:hover:text-blue-400 transition">
+          <i class="fas fa-rotate-left"></i> Scan another code
+        </button>
+      </div>
+    </div>
+
+    <!-- ================= FEATURES ================= -->
+    <section class="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div class="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
+        <i class="fas fa-layer-group text-blue-500 mb-2"></i>
+        <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100">Multi-pass decoding</h3>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">Grayscale, adaptive Otsu binarisation, colour inversion and smart upscaling recover even low-quality codes.</p>
+      </div>
+      <div class="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
+        <i class="fas fa-lock text-emerald-500 mb-2"></i>
+        <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100">Nothing leaves your device</h3>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">All image processing happens locally in your browser. No uploads, no servers, no tracking.</p>
+      </div>
+      <div class="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
+        <i class="fas fa-qrcode text-violet-500 mb-2"></i>
+        <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100">Every QR type</h3>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">URLs, plain text, Wi-Fi credentials, vCards, e-mail, SMS, phone numbers, geo points and OTP codes.</p>
+      </div>
+    </section>
+
+    <p class="text-center text-xs text-slate-400 dark:text-slate-600 mt-8">
+      Tip: for best results use a sharp, well-lit image with the QR code fully inside the frame and enough white border.
+    </p>
+  </main>
+
+  <!-- ================= FOOTER ================= -->
+  <footer class="border-t border-slate-200/80 dark:border-slate-800/80 py-6">
+    <p class="text-center text-xs text-slate-400 dark:text-slate-600">
+      © <span id="year"></span> QRDecode · Professional QR Code Reader
+    </p>
+  </footer>
+</div>
+
+<!-- ================= CAMERA MODAL ================= -->
+<div id="cameraModal" class="hidden fixed inset-0 z-50 items-center justify-center p-4">
+  <div class="absolute inset-0 bg-slate-950/85 backdrop-blur-sm" data-close-camera></div>
+
+  <div class="relative w-full max-w-md rounded-3xl overflow-hidden pop-in
+              bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800">
+      <span class="text-sm font-semibold text-slate-800 dark:text-slate-100">
+        <i class="fas fa-camera text-blue-500 mr-1.5"></i> Scan with camera
+      </span>
+      <button id="closeCameraBtn" type="button" aria-label="Close camera"
+        class="w-8 h-8 grid place-items-center rounded-lg text-slate-500 dark:text-slate-400
+               hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+        <i class="fas fa-xmark"></i>
+      </button>
+    </div>
+
+    <div class="relative bg-black aspect-square">
+      <video id="cameraVideo" class="w-full h-full" playsinline muted autoplay></video>
+      <div class="absolute inset-0 grid place-items-center pointer-events-none">
+        <div class="w-3/5 aspect-square rounded-2xl border-2 border-white/70 shadow-[0_0_0_9999px_rgba(0,0,0,.35)]"></div>
+      </div>
+    </div>
+
+    <p class="text-center text-xs text-slate-500 dark:text-slate-400 py-3">
+      Point your camera at a QR code — detection is automatic
+    </p>
+  </div>
+</div>
+
+<canvas id="cameraCanvas" class="hidden"></canvas>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ============================================================
+     THEME
+     ============================================================ */
+  const root        = document.documentElement;
+  const themeToggle = document.getElementById('themeToggle');
+  const themeIcon   = document.getElementById('themeIcon');
+
+  function applyTheme(isDark, persist) {
+    root.classList.toggle('dark', isDark);
+    if (themeIcon) themeIcon.className = isDark ? 'fas fa-sun' : 'fas fa-moon';
+    if (persist) { try { localStorage.setItem('qr-theme', isDark ? 'dark' : 'light'); } catch (e) {} }
+  }
+  applyTheme(root.classList.contains('dark'), false);
+  themeToggle.addEventListener('click', function () {
+    applyTheme(!root.classList.contains('dark'), true);
+  });
+
+  /* ============================================================
+     DOM REFERENCES
+     ============================================================ */
+  const dropZone       = document.getElementById('dropZone');
+  const fileInput      = document.getElementById('fileInput');
+  const browseBtn      = document.getElementById('browseBtn');
+  const cameraBtn      = document.getElementById('cameraBtn');
+  const headerCameraBtn= document.getElementById('headerCameraBtn');
+  const loadingOverlay = document.getElementById('loadingOverlay');
+
+  const messageBox   = document.getElementById('messageBox');
+  const messageIcon  = document.getElementById('messageIcon');
+  const messageText  = document.getElementById('messageText');
+
+  const resultSection  = document.getElementById('resultSection');
+  const previewImage   = document.getElementById('previewImage');
+  const decodedContent = document.getElementById('decodedContent');
+  const decodeMeta     = document.getElementById('decodeMeta');
+  const typeBadge      = document.getElementById('typeBadge');
+  const typeBadgeIcon  = document.getElementById('typeBadgeIcon');
+  const typeBadgeText  = document.getElementById('typeBadgeText');
+
+  const copyButton    = document.getElementById('copyButton');
+  const openLinkButton= document.getElementById('openLinkButton');
+  const resetButton   = document.getElementById('resetButton');
+
+  const cameraModal   = document.getElementById('cameraModal');
+  const cameraVideo   = document.getElementById('cameraVideo');
+  const closeCameraBtn= document.getElementById('closeCameraBtn');
+  const cameraCanvas  = document.getElementById('cameraCanvas');
+  const cameraCtx     = cameraCanvas.getContext('2d', { willReadFrequently: true });
+
+  /* ============================================================
+     STATE
+     ============================================================ */
+  let currentText  = '';
+  let mediaStream  = null;
+  let rafId        = null;
+  let lastScanTime = 0;
+
+  document.getElementById('year').textContent = new Date().getFullYear();
+
+  /* ============================================================
+     UI HELPERS
+     ============================================================ */
+  function showMessage(text, type) {
+    messageBox.className = 'msg mt-4 msg-' + (type || 'info');
+    messageIcon.className = 'fas mt-0.5 ' +
+      (type === 'error'   ? 'fa-circle-exclamation' :
+       type === 'success' ? 'fa-circle-check'       : 'fa-circle-info');
+    messageText.textContent = text;
+  }
+  function hideMessage() { messageBox.className = 'msg mt-4 hidden'; }
+
+  function setLoading(on) {
+    if (on) { loadingOverlay.classList.remove('hidden'); loadingOverlay.classList.add('flex'); }
+    else    { loadingOverlay.classList.add('hidden');    loadingOverlay.classList.remove('flex'); }
+  }
+
+  function resetUI() {
+    fileInput.value = '';
+    previewImage.removeAttribute('src');
+    resultSection.classList.add('hidden');
+    resetButton.classList.add('hidden');
+    resetButton.classList.remove('inline-flex');
+    decodedContent.textContent = '';
+    decodeMeta.textContent = '';
+    copyButton.disabled = true;
+    openLinkButton.classList.add('hidden');
+    openLinkButton.href = '#';
+    currentText = '';
+    dropZone.classList.remove('active');
+    hideMessage();
+  }
+
+  /* ============================================================
+     TYPE DETECTION + LINK RESOLUTION
+     ============================================================ */
+  function resolveLink(text) {
+    const t = (text || '').trim();
+    if (!t) return null;
+    if (/^https?:\/\//i.test(t)) return t;
+    if (/^(mailto|tel|sms|smsto|geo|bitcoin|otpauth):/i.test(t)) return t;
+    if (/^www\.[^\s]+\.[a-z]{2,}/i.test(t)) return 'https://' + t;
+    if (!/\s/.test(t) && /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/[^\s]*)?$/i.test(t)) return 'https://' + t;
+    return null;
+  }
+
+  function detectType(text) {
+    const t  = (text || '').trim();
+    const up = t.toUpperCase();
+
+    if (up.startsWith('BEGIN:VCARD'))  return { label: 'vCard Contact',   icon: 'fa-address-card',   cls: 'badge-purple' };
+    if (up.startsWith('BEGIN:VEVENT')) return { label: 'Calendar Event',  icon: 'fa-calendar-days',  cls: 'badge-purple' };
+    if (up.startsWith('MECARD:'))      return { label: 'Contact',         icon: 'fa-address-card',   cls: 'badge-purple' };
+    if (up.startsWith('WIFI:'))        return { label: 'Wi-Fi Network',   icon: 'fa-wifi',           cls: 'badge-blue'   };
+    if (up.startsWith('MATMSG:'))      return { label: 'Email Message',   icon: 'fa-envelope',       cls: 'badge-amber'  };
+    if (/^mailto:/i.test(t) || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(t))
+                                       return { label: 'Email Address',   icon: 'fa-envelope',       cls: 'badge-amber'  };
+    if (/^(tel|phone):/i.test(t))      return { label: 'Phone Number',    icon: 'fa-phone',          cls: 'badge-green'  };
+    if (/^smsto:/i.test(t) || /^sms:/i.test(t))
+                                       return { label: 'SMS',             icon: 'fa-comment-sms',    cls: 'badge-green'  };
+    if (/^geo:/i.test(t))              return { label: 'Location',        icon: 'fa-location-dot',   cls: 'badge-rose'   };
+    if (/^otpauth:/i.test(t))          return { label: 'Authenticator',   icon: 'fa-key',            cls: 'badge-rose'   };
+    if (/^bitcoin:/i.test(t))          return { label: 'Crypto Payment',  icon: 'fa-bitcoin-sign',   cls: 'badge-amber'  };
+    if (resolveLink(t))                return { label: 'Website URL',     icon: 'fa-link',           cls: 'badge-blue'   };
+
+    return { label: 'Plain Text', icon: 'fa-align-left', cls: 'badge-slate' };
+  }
+
+  /* ============================================================
+     IMAGE DECODING PIPELINE
+     ============================================================ */
+
+  // Draw the source image onto a canvas at a given scale (white background
+  // so transparent PNGs don't break binarisation).
+  function renderToCanvas(img, scale) {
+    const nw = img.naturalWidth  || img.width;
+    const nh = img.naturalHeight || img.height;
+    const w  = Math.max(1, Math.round(nw * scale));
+    const h  = Math.max(1, Math.round(nh * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width  = w;
+    canvas.height = h;
+
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.imageSmoothingEnabled = scale < 1;      // nearest-neighbour when upscaling keeps edges crisp
+    if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, 0, 0, w, h);
+    return ctx;
+  }
+
+  // Otsu's method — automatic threshold for binarisation
+  function otsuThreshold(gray) {
+    const hist = new Array(256).fill(0);
+    for (let i = 0; i < gray.length; i++) hist[gray[i]]++;
+
+    const total = gray.length;
+    let sum = 0;
+    for (let i = 0; i < 256; i++) sum += i * hist[i];
+
+    let sumB = 0, wB = 0, maxVar = 0, threshold = 127;
+
+    for (let t = 0; t < 256; t++) {
+      wB += hist[t];
+      if (wB === 0) continue;
+      const wF = total - wB;
+      if (wF === 0) break;
+
+      sumB += t * hist[t];
+      const mB = sumB / wB;
+      const mF = (sum - sumB) / wF;
+      const between = wB * wF * (mB - mF) * (mB - mF);
+
+      if (between > maxVar) { maxVar = between; threshold = t; }
+    }
+    return threshold;
+  }
+
+  // Build the different image variants we will feed to jsQR
+  function buildVariants(ctx) {
+    const w = ctx.canvas.width;
+    const h = ctx.canvas.height;
+
+    const base = ctx.getImageData(0, 0, w, h);
+    const src  = base.data;
+    const len  = w * h;
+
+    const gray = new Uint8ClampedArray(len);
+    for (let i = 0, j = 0; i < len; i++, j += 4) {
+      gray[i] = (src[j] * 0.299 + src[j + 1] * 0.587 + src[j + 2] * 0.114) | 0;
+    }
+
+    const thr = otsuThreshold(gray);
+
+    function make(mode) {
+      const out = ctx.createImageData(w, h);
+      const o   = out.data;
+      for (let i = 0; i < len; i++) {
+        let v = gray[i];
+        if (mode === 'binary')          v = v > thr ? 255 : 0;
+        else if (mode === 'binaryInv')  v = v > thr ? 0 : 255;
+        else if (mode === 'grayInv')    v = 255 - v;
+        const k = i * 4;
+        o[k] = o[k + 1] = o[k + 2] = v;
+        o[k + 3] = 255;
+      }
+      return out;
+    }
+
+    return [
+      { name: 'colour',      data: base },
+      { name: 'grayscale',   data: make('gray') },
+      { name: 'high-contrast', data: make('binary') },
+      { name: 'inverted',    data: make('binaryInv') }
+    ];
+  }
+
+  // Master decode routine: tries multiple scales × multiple variants
+  function decodeImageElement(img) {
+    const nw = img.naturalWidth  || img.width;
+    const nh = img.naturalHeight || img.height;
+    if (!nw || !nh) return null;
+
+    const MAX_SIDE = 1400;
+    const longest  = Math.max(nw, nh);
+    const scales   = [];
+    const seen     = {};
+
+    function pushScale(s) {
+      if (!s || s <= 0 || s > 8) return;
+      const key = s.toFixed(3);
+      if (seen[key]) return;
+      seen[key] = true;
+      scales.push(s);
+    }
+
+    if (longest > MAX_SIDE) pushScale(MAX_SIDE / longest);
+    else                    pushScale(1);
+
+    // Upscale attempts help tiny / pixelated codes a lot
+    if (longest * 2 <= MAX_SIDE) pushScale(2);
+    if (longest * 3 <= MAX_SIDE) pushScale(3);
+
+    const t0 = performance.now();
+
+    for (let s = 0; s < scales.length; s++) {
+      const ctx = renderToCanvas(img, scales[s]);
+      const variants = buildVariants(ctx);
+
+      for (let v = 0; v < variants.length; v++) {
+        const variant = variants[v];
+        let code = null;
+
+        try {
+          code = jsQR(variant.data.data, variant.data.width, variant.data.height, {
+            inversionAttempts: 'attemptBoth'
+          });
+        } catch (e) { code = null; }
+
+        if (code && code.data) {
+          return {
+            text:    code.data,
+            ms:      Math.round(performance.now() - t0),
+            variant: variant.name,
+            scale:   scales[s]
+          };
+        }
+      }
+    }
+    return null;
+  }
+
+  /* ============================================================
+     RENDER RESULT
+     ============================================================ */
+  function renderResult(text, imageSrc, meta) {
+    currentText = text;
+
+    previewImage.src = imageSrc;
+    decodedContent.textContent = text;   // textContent = safe, no HTML injection
+
+    const info = detectType(text);
+    typeBadge.className       = 'badge ' + info.cls;
+    typeBadgeIcon.className   = 'fas ' + info.icon;
+    typeBadgeText.textContent = info.label;
+
+    const href = resolveLink(text);
+    if (href) {
+      openLinkButton.href = href;
+      openLinkButton.classList.remove('hidden');
+      openLinkButton.classList.add('inline-flex');
+    } else {
+      openLinkButton.classList.add('hidden');
+      openLinkButton.classList.remove('inline-flex');
+      openLinkButton.href = '#';
+    }
+
+    decodeMeta.textContent = meta || '';
+
+    copyButton.disabled = false;
+
+    resultSection.classList.remove('hidden');
+    resetButton.classList.remove('hidden');
+    resetButton.classList.add('inline-flex');
+
+    setTimeout(function () {
+      resultSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 120);
+  }
+
+  /* ============================================================
+     FILE HANDLING
+     ============================================================ */
+  function readAsDataURL(file) {
+    return new Promise(function (resolve, reject) {
+      const reader = new FileReader();
+      reader.onload  = function (e) { resolve(e.target.result); };
+      reader.onerror = function ()  { reject(new Error('read-error')); };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function loadImage(src) {
+    return new Promise(function (resolve, reject) {
+      const img = new Image();
+      img.onload  = function () { resolve(img); };
+      img.onerror = function () { reject(new Error('image-error')); };
+      img.src = src;
+    });
+  }
+
+  function nextFrame() {
+    return new Promise(function (resolve) {
+      requestAnimationFrame(function () { setTimeout(resolve, 20); });
+    });
+  }
+
+  async function handleFile(file) {
+    if (!file) return;
+
+    if (!file.type || file.type.indexOf('image/') !== 0) {
+      showMessage('That file is not an image. Please use PNG, JPG, WEBP, GIF or BMP.', 'error');
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      showMessage('That image is larger than 25 MB. Please try a smaller file.', 'error');
+      return;
+    }
+
+    hideMessage();
+    setLoading(true);
+
+    try {
+      const dataUrl = await readAsDataURL(file);
+      const img     = await loadImage(dataUrl);
+
+      await nextFrame();                 // let the spinner paint
+      const result = decodeImageElement(img);
+      setLoading(false);
+
+      if (result) {
+        showMessage('QR code decoded successfully.', 'success');
+        renderResult(
+          result.text,
+          dataUrl,
+          'Decoded in ' + result.ms + ' ms · ' + result.variant + ' pass · scale ×' + (Math.round(result.scale * 100) / 100)
+        );
+      } else {
+        showMessage('No QR code detected in this image. Try a sharper, brighter photo with the code fully in frame.', 'error');
+        resetUI();
+        showMessage('No QR code detected in this image. Try a sharper, brighter photo with the code fully in frame.', 'error');
+      }
+    } catch (err) {
+      setLoading(false);
+      showMessage('Could not read that image. The file may be corrupted or unsupported.', 'error');
+      resetUI();
+    }
+  }
+
+  /* ============================================================
+     DRAG & DROP / CLICK / PASTE
+     ============================================================ */
+  ['dragenter', 'dragover'].forEach(function (evt) {
+    dropZone.addEventListener(evt, function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      dropZone.classList.add('active');
+    });
+  });
+
+  ['dragleave', 'dragend'].forEach(function (evt) {
+    dropZone.addEventListener(evt, function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      dropZone.classList.remove('active');
+    });
+  });
+
+  dropZone.addEventListener('drop', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.remove('active');
+    const files = e.dataTransfer && e.dataTransfer.files;
+    if (files && files.length) handleFile(files[0]);
+  });
+
+  dropZone.addEventListener('click', function () { fileInput.click(); });
+  dropZone.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+  });
+
+  browseBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    fileInput.click();
+  });
+
+  fileInput.addEventListener('change', function (e) {
+    if (e.target.files && e.target.files.length) handleFile(e.target.files[0]);
+  });
+
+  // Paste an image from the clipboard
+  document.addEventListener('paste', function (e) {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type && items[i].type.indexOf('image/') === 0) {
+        const file = items[i].getAsFile();
+        if (file) { handleFile(file); break; }
+      }
+    }
+  });
+
+  // Prevent the browser from opening dropped files
+  window.addEventListener('dragover', function (e) { e.preventDefault(); });
+  window.addEventListener('drop',     function (e) { e.preventDefault(); });
+
+  /* ============================================================
+     COPY BUTTON
+     ============================================================ */
+  copyButton.addEventListener('click', async function () {
+    if (!currentText) return;
+
+    let ok = false;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(currentText);
+        ok = true;
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = currentText;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+    } catch (e) { ok = false; }
+
+    const originalHTML = copyButton.innerHTML;
+    if (ok) {
+      copyButton.innerHTML = '<i class="fas fa-check"></i><span>Copied!</span>';
+      copyButton.disabled = true;
+      setTimeout(function () {
+        copyButton.innerHTML = originalHTML;
+        copyButton.disabled = false;
+      }, 1500);
+    } else {
+      showMessage('Copy failed — please select the text manually.', 'error');
+    }
+  });
+
+  /* ============================================================
+     RESET
+     ============================================================ */
+  resetButton.addEventListener('click', function () {
+    resetUI();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  /* ============================================================
+     CAMERA SCANNING
+     ============================================================ */
+  function openCameraModal() {
+    cameraModal.classList.remove('hidden');
+    cameraModal.classList.add('flex');
+  }
+
+  function closeCamera() {
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(function (t) { t.stop(); });
+      mediaStream = null;
+    }
+    try { cameraVideo.pause(); } catch (e) {}
+    cameraVideo.srcObject = null;
+
+    cameraModal.classList.add('hidden');
+    cameraModal.classList.remove('flex');
+  }
+
+  function scanLoop() {
+    rafId = requestAnimationFrame(scanLoop);
+
+    const now = performance.now();
+    if (now - lastScanTime < 110) return;   // throttle to ~9 fps for CPU comfort
+    lastScanTime = now;
+
+    const vw = cameraVideo.videoWidth;
+    const vh = cameraVideo.videoHeight;
+    if (!vw || !vh) return;
+
+    // Downscale very large frames for speed
+    const MAX = 800;
+    const scale = Math.min(1, MAX / Math.max(vw, vh));
+    const w = Math.round(vw * scale);
+    const h = Math.round(vh * scale);
+
+    cameraCanvas.width  = w;
+    cameraCanvas.height = h;
+    cameraCtx.drawImage(cameraVideo, 0, 0, w, h);
+
+    let imageData;
+    try { imageData = cameraCtx.getImageData(0, 0, w, h); }
+    catch (e) { return; }
+
+    let code = null;
+    try {
+      code = jsQR(imageData.data, w, h, { inversionAttempts: 'attemptBoth' });
+    } catch (e) { code = null; }
+
+    if (code && code.data) {
+      const snapshot = cameraCanvas.toDataURL('image/png');
+      closeCamera();
+      hideMessage();
+      showMessage('QR code scanned live from the camera.', 'success');
+      renderResult(code.data, snapshot, 'Scanned live from camera');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }
+
+  function startCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showMessage('Camera access is not supported in this browser.', 'error');
+      return;
+    }
+
+    openCameraModal();
+    lastScanTime = 0;
+
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    })
+    .then(function (stream) {
+      mediaStream = stream;
+      cameraVideo.srcObject = stream;
+      cameraVideo.setAttribute('playsinline', 'true');
+      return cameraVideo.play();
+    })
+    .then(function () { scanLoop(); })
+    .catch(function (err) {
+      closeCamera();
+      showMessage('Unable to access the camera: ' + (err && err.message ? err.message : 'permission denied') + '.', 'error');
+    });
+  }
+
+  cameraBtn.addEventListener('click', function (e) { e.stopPropagation(); startCamera(); });
+  headerCameraBtn.addEventListener('click', startCamera);
+  closeCameraBtn.addEventListener('click', closeCamera);
+  cameraModal.addEventListener('click', function (e) {
+    if (e.target.hasAttribute('data-close-camera')) closeCamera();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !cameraModal.classList.contains('hidden')) closeCamera();
+  });
+
+  /* ============================================================
+     INIT
+     ============================================================ */
+  resetUI();
+})();
+</script>
+</body>
+</html>
